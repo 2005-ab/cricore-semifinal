@@ -1,55 +1,163 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, Image, FlatList, StyleSheet } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, Image } from "react-native";
+import { Picker } from '@react-native-picker/picker';
 import { getDatabase, ref, onValue } from "firebase/database";
 
 const PointsTableScreen = () => {
   const [pointsTable, setPointsTable] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedSeason, setSelectedSeason] = useState("2024");
 
   useEffect(() => {
-    const db = getDatabase();
-    const pointsRef = ref(db, "ipl_stats/points_table");
+    if (selectedSeason === "2024") {
+      fetchIPL2024PointsTable();
+    } else {
+      fetchIPL2025PointsTable();
+    }
+  }, [selectedSeason]);
 
-    onValue(pointsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        const teamsArray = Object.keys(data).map((key) => ({ id: key, ...data[key] }));
-        teamsArray.sort((a, b) => a.Rank - b.Rank); // Sort by rank
-        setPointsTable(teamsArray);
+  const fetchIPL2024PointsTable = async () => {
+    try {
+      const response = await fetch('https://ipl-stats-sports-mechanic.s3.ap-south-1.amazonaws.com/ipl/feeds/stats/148-groupstandings.js?ongroupstandings=_jqjsp&_1743330321588=');
+      
+      // Check if response is ok
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    });
-  }, []);
+      
+      const text = await response.text();
+      
+      // Extract the JSON data from the ongroupstandings wrapper
+      const jsonStr = text.replace('ongroupstandings(', '').replace(');', '');
+      const data = JSON.parse(jsonStr);
+      
+      if (data && data.points) {
+        const tableArray = data.points.map(team => ({
+          id: team.TeamID,
+          TeamName: team.TeamName,
+          TeamCode: team.TeamCode,
+          Matches: team.Matches,
+          Won: team.Wins,
+          Lost: team.Loss,
+          Points: team.Points,
+          NRR: team.NetRunRate,
+          TeamLogo: team.TeamLogo
+        }));
+        setPointsTable(tableArray);
+      } else {
+        console.error("Invalid data format received");
+        setPointsTable([]);
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching IPL 2024 points table:", error);
+      setPointsTable([]);
+      setLoading(false);
+    }
+  };
 
-  const renderTeamItem = ({ item }) => (
-    <View style={styles.teamRow}>
-      <View style={styles.cell}><Text style={styles.rank}>{item.Rank}</Text></View>
-      <View style={[styles.cell, styles.teamContainer]}>
-        <Image source={{ uri: item.TeamLogo }} style={styles.teamLogo} />
-        <Text style={styles.teamName}>{item.Team}</Text>
+  const fetchIPL2025PointsTable = async () => {
+    try {
+      const response = await fetch('https://ipl-stats-sports-mechanic.s3.ap-south-1.amazonaws.com/ipl/feeds/stats/203-groupstandings.js?ongroupstandings=_jqjsp&_1743329348914=');
+      
+      // Check if response is ok
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const text = await response.text();
+      
+      // Extract the JSON data from the ongroupstandings wrapper
+      const jsonStr = text.replace('ongroupstandings(', '').replace(');', '');
+      const data = JSON.parse(jsonStr);
+      
+      if (data && data.points) {
+        const tableArray = data.points.map(team => ({
+          id: team.TeamID,
+          TeamName: team.TeamName,
+          TeamCode: team.TeamCode,
+          Matches: team.Matches,
+          Won: team.Wins,
+          Lost: team.Loss,
+          Points: team.Points,
+          NRR: team.NetRunRate,
+          TeamLogo: team.TeamLogo
+        }));
+        setPointsTable(tableArray);
+      } else {
+        console.error("Invalid data format received");
+        setPointsTable([]);
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching IPL 2025 points table:", error);
+      setPointsTable([]);
+      setLoading(false);
+    }
+  };
+
+  const renderTeamRow = ({ item, index }) => (
+    <View style={[styles.teamRow, index % 2 === 0 ? styles.evenRow : styles.oddRow]}>
+      <View style={styles.teamInfo}>
+        <Text style={styles.position}>{index + 1}</Text>
+        <Image 
+          source={{ uri: item.TeamLogo || 'https://raw.githubusercontent.com/2005-ab/TOTS-Images/refs/heads/main/placeholder.png' }} 
+          style={styles.teamLogo} 
+        />
+        <Text style={styles.teamName}>{item.TeamCode}</Text>
       </View>
-      <View style={[styles.cell, styles.shiftRight]}><Text style={styles.matches}>{item.Matches}</Text></View>
-      <View style={styles.cell}><Text style={styles.wins}>{item.Wins}</Text></View>
-      <View style={styles.cell}><Text style={styles.losses}>{item.Losses}</Text></View>
-      <View style={styles.cell}><Text style={styles.points}>{item.Points}</Text></View>
-      <View style={styles.cell}><Text style={styles.nrr}>{item.NRR}</Text></View>
+      <View style={styles.statsContainer}>
+        <Text style={styles.stat}>{item.Matches}</Text>
+        <Text style={styles.stat}>{item.Won}</Text>
+        <Text style={styles.stat}>{item.Lost}</Text>
+        <Text style={styles.stat}>{item.Points}</Text>
+        <Text style={styles.stat}>{Number(item.NRR).toFixed(1)}</Text>
+      </View>
     </View>
   );
 
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FFD700" />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>IPL Points Table</Text>
-      <View style={styles.tableHeader}>
-        <View style={styles.cell}><Text style={styles.rank}>#</Text></View>
-        <View style={[styles.cell, styles.teamHeader]}><Text style={styles.teamText}>Team</Text></View>
-        <View style={[styles.cell, styles.shiftRight]}><Text style={styles.matches}>M</Text></View>
-        <View style={styles.cell}><Text style={styles.wins}>W</Text></View>
-        <View style={styles.cell}><Text style={styles.losses}>L</Text></View>
-        <View style={styles.cell}><Text style={styles.points}>P</Text></View>
-        <View style={styles.cell}><Text style={styles.nrr}>NRR</Text></View>
+      {/* Season Selector */}
+      <View style={styles.seasonSelector}>
+        <Picker
+          selectedValue={selectedSeason}
+          onValueChange={(value) => setSelectedSeason(value)}
+          style={styles.picker}
+        >
+          <Picker.Item label="IPL 2024" value="2024" />
+          <Picker.Item label="IPL 2025" value="2025" />
+        </Picker>
       </View>
+
+      {/* Header Row */}
+      <View style={styles.headerRow}>
+        <View style={styles.teamInfo}>
+          <Text style={styles.headerText}>Pos</Text>
+          <Text style={[styles.headerText, styles.teamHeader]}>Team</Text>
+        </View>
+        <View style={styles.statsContainer}>
+          <Text style={styles.headerText}>M</Text>
+          <Text style={styles.headerText}>W</Text>
+          <Text style={styles.headerText}>L</Text>
+          <Text style={styles.headerText}>Pts</Text>
+          <Text style={styles.headerText}>NRR</Text>
+        </View>
+      </View>
+
       <FlatList
         data={pointsTable}
+        renderItem={renderTeamRow}
         keyExtractor={(item) => item.id}
-        renderItem={renderTeamItem}
+        contentContainerStyle={styles.listContainer}
       />
     </View>
   );
@@ -61,83 +169,93 @@ const styles = StyleSheet.create({
     backgroundColor: "#1e1e1e",
     padding: 10,
   },
-  header: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#fff",
-    textAlign: "center",
-    marginBottom: 10,
-  },
-  tableHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#fff",
-  },
-  teamRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#444",
-  },
-  cell: {
+  loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#1e1e1e",
   },
-  rank: {
-    color: "#fff",
-    textAlign: "center",
+  seasonSelector: {
+    backgroundColor: "#2a2a2a",
+    borderRadius: 10,
+    marginBottom: 10,
+    overflow: 'hidden',
   },
-  teamContainer: {
+  picker: {
+    color: "#FFD700",
+    backgroundColor: "#2a2a2a",
+  },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 10,
+    backgroundColor: "#2a2a2a",
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  teamInfo: {
+    flex: 2,
     flexDirection: "row",
     alignItems: "center",
+    paddingLeft: 5,
+  },
+  statsContainer: {
     flex: 3,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingLeft: 10,
+  },
+  headerText: {
+    color: "#FFD700",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  teamHeader: {
+    marginLeft: 40,
+  },
+  teamRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 15,
+    marginBottom: 5,
+    borderRadius: 8,
+  },
+  evenRow: {
+    backgroundColor: "#2a2a2a",
+  },
+  oddRow: {
+    backgroundColor: "#333333",
+  },
+  position: {
+    color: "#FFD700",
+    fontWeight: "bold",
+    width: 25,
+    textAlign: "center",
+    fontSize: 16,
   },
   teamLogo: {
-    width: 40,
-    height: 40,
+    width: 30,
+    height: 30,
     resizeMode: "contain",
-    backgroundColor: "transparent",
+    marginLeft: 15,
   },
   teamName: {
     color: "#fff",
-    fontSize: 14,
-    textAlign: "left",
-    marginLeft: 5,
+    fontSize: 16,
+    marginLeft: 15,
+    fontWeight: "bold",
   },
-  matches: {
+  stat: {
     color: "#fff",
+    width: 30,
     textAlign: "center",
+    fontSize: 16,
   },
-  wins: {
-    color: "#4CAF50",
-    textAlign: "center",
+  listContainer: {
+    paddingBottom: 20,
   },
-  losses: {
-    color: "#F44336",
-    textAlign: "center",
-  },
-  points: {
-    color: "#FFD700",
-    textAlign: "center",
-  },
-  nrr: {
-    color: "#fff",
-    textAlign: "center",
-  },
-  teamHeader: {
-    flex: 3,
-  },
-  teamText: {
-    color: "#fff",
-    textAlign: "center",
-  },
-  shiftRight: {
-    marginLeft: 10,
-  }
 });
 
 export default PointsTableScreen;
+

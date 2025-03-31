@@ -1,236 +1,360 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, Image, ScrollView, ActivityIndicator, StyleSheet } from "react-native";
-import { useRoute } from "@react-navigation/native";
-import { getDatabase, ref, onValue } from "firebase/database";
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity } from 'react-native';
+import ScorecardTab from './ScorecardTab';
+import RatingTab from './RatingTab';
 
-const MatchDetailsScreen = () => {
-  const route = useRoute();
-  const { matchId } = route.params || {};
+// Mapping full team names to short forms
+const teamShortForms = {
+  "Chennai Super Kings": "CSK",
+  "Mumbai Indians": "MI",
+  "Gujarat Titans": "GT",
+  "Kolkata Knight Riders": "KKR",
+  "Punjab Kings": "PBKS",
+  "Sunrisers Hyderabad": "SRH",
+  "Rajasthan Royals": "RR",
+  "Lucknow Super Giants": "LSG",
+  "Delhi Capitals": "DC",
+  "Royal Challengers Bengaluru": "RCB"
+};
 
-  const [matchData, setMatchData] = useState(null);
-  const [loading, setLoading] = useState(true);
+// Helper functions for strike rate and economy color coding
+const getStrikeRateColor = (sr) => {
+  const value = parseFloat(sr);
+  if (isNaN(value)) return 'white';
+  if (value < 100) return 'red';
+  else if (value < 150) return 'yellow';
+  else if (value < 200) return 'green';
+  else return 'cyan';
+};
+
+const getEconomyColor = (eco) => {
+  const value = parseFloat(eco);
+  if (isNaN(value)) return 'white';
+  if (value < 6) return 'cyan';
+  else if (value < 8) return 'green';
+  else if (value < 10) return 'yellow';
+  else return 'red';
+};
+
+const MatchDetailsScreen = ({ route, navigation }) => {
+  const { matchId, season } = route.params;
+  const [matchDetails, setMatchDetails] = useState({});
+  const [activeTab, setActiveTab] = useState('Summary');
+
+  // For Ratings tab – extract batting and bowling data (if available)
+  const battingData = matchDetails.battingData ? Object.values(matchDetails.battingData) : [];
+  const bowlingData = matchDetails.bowlingData ? Object.values(matchDetails.bowlingData) : [];
+  const winningTeam = matchDetails.WinningTeam || '';
 
   useEffect(() => {
-    if (!matchId) {
-      console.error("❌ No match ID received!");
-      setLoading(false);
-      return;
-    }
-
-    console.log(`📢 Fetching data for matchId: ${matchId}`);
-    const db = getDatabase();
-    const matchRef = ref(db, `ipl_matches/${matchId}`);
-
-    onValue(
-      matchRef,
-      (snapshot) => {
-        console.log("🔍 Firebase snapshot:", snapshot.val());
-
-        if (snapshot.exists()) {
-          console.log("✅ Data found:", snapshot.val());
-          setMatchData(snapshot.val());
+    const fetchMatchDetails = async () => {
+      try {
+        let url = "";
+        if (season === "2024") {
+          // Use the IPL 2024 summary URL
+          url = "https://ipl-stats-sports-mechanic.s3.ap-south-1.amazonaws.com/ipl/feeds/148-matchschedule.js?MatchSchedule=_jqjsp&_1743401104110=";
         } else {
-          console.error("⚠️ No data found for matchId:", matchId);
+          // Use the IPL 2025 summary URL
+          url = "https://ipl-stats-sports-mechanic.s3.ap-south-1.amazonaws.com/ipl/feeds/203-matchschedule.js?MatchSchedule=_jqjsp&_1743400682690=";
         }
-        setLoading(false);
-      },
-      (error) => {
-        console.error("🔥 Firebase error:", error);
-        setLoading(false);
+        const response = await fetch(url);
+        const text = await response.text();
+        // Remove any wrapper text if present
+        const jsonStr = text.replace('MatchSchedule(', '').replace(');', '');
+        const data = JSON.parse(jsonStr);
+        if (data && data.Matchsummary) {
+          // Find the match based on matchId (ensuring both are strings)
+          const match = data.Matchsummary.find(m => m.MatchID.toString() === matchId.toString());
+          if (match) {
+            // Transform the data as needed
+            const transformedData = {
+              ...match,
+              HomeTeamName: match.FirstBattingTeamName,
+              AwayTeamName: match.SecondBattingTeamName,
+              // For summary, you might also map innings summaries if available
+              '1Summary': match['1Summary'] || "",
+              '2Summary': match['2Summary'] || "",
+              // Optionally include other fields as necessary
+            };
+            setMatchDetails(transformedData);
+          } else {
+            console.error("Match not found in summary data");
+          }
+        } else {
+          console.error("Invalid data format received");
+        }
+      } catch (error) {
+        console.error('Error fetching match details:', error);
       }
-    );
-  }, [matchId]);
+    };
+    fetchMatchDetails();
+  }, [matchId, season]);
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#d32f2f" />
-        <Text>Loading match details...</Text>
-      </View>
-    );
-  }
-
-  if (!matchData) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>No match data found.</Text>
-      </View>
-    );
-  }
+  // Helper to replace full team names with short forms
+  const replaceTeamNames = (text) => {
+    if (!text) return text;
+    let replacedText = text;
+    Object.keys(teamShortForms).forEach((fullName) => {
+      replacedText = replacedText.replace(new RegExp(fullName, 'g'), teamShortForms[fullName]);
+    });
+    return replacedText;
+  };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.headerContainer}>
-        <Image source={{ uri: matchData.HomeTeamLogo }} style={styles.teamLogo} />
-        <Text style={styles.vsText}>VS</Text>
-        <Image source={{ uri: matchData.AwayTeamLogo }} style={styles.teamLogo} />
-      </View>
-      <Text style={styles.matchTitle}>{matchData.HomeTeamName} vs {matchData.AwayTeamName}</Text>
-      <Text style={styles.details}>🏟 Stadium: {matchData.GroundName ?? "N/A"}</Text>
-      <Text style={styles.details}>📅 Date: {matchData.MatchDate ?? "N/A"}</Text>
-      <Text style={styles.toss}>🪙 Toss: {matchData.TossDetails ?? "N/A"}</Text>
-      <Text style={styles.result}>🏆 Result: {matchData.Comments ?? matchData.Commentss ?? "N/A"}</Text>
-      
-      <View style={styles.scoreContainer}>
-        <Text style={styles.score}>{matchData["1Summary"] ?? "N/A"}</Text>
-        <Text style={styles.score}>{matchData["2Summary"] ?? "N/A"}</Text>
-      </View>
-      
-      <View style={styles.momContainer}>
-        <Text style={styles.momTitle}>Man of the Match</Text>
-        <Image source={{ uri: matchData.MOMImage }} style={styles.momImage} />
-        <Text style={styles.momName}>{matchData.MOM}</Text>
-        <Text style={styles.momStats}>Runs: {matchData.MOMRuns ?? "0"} | Wickets: {matchData.MOMWicket  ?? "0"}</Text>
-      </View>
+    <View style={styles.mainContainer}>
+      <ScrollView contentContainerStyle={styles.contentContainer}>
+        {/* Team Logos and Short Form Names */}
+        <View style={styles.teamLogosContainer}>
+          <View style={styles.teamContainer}>
+            {matchDetails.HomeTeamLogo && (
+              <Image source={{ uri: matchDetails.HomeTeamLogo }} style={styles.teamLogo} />
+            )}
+            <Text style={styles.teamName}>
+              {teamShortForms[matchDetails.HomeTeamName] || matchDetails.HomeTeamName}
+            </Text>
+          </View>
+          <Text style={styles.vsText}>V/S</Text>
+          <View style={styles.teamContainer}>
+            {matchDetails.AwayTeamLogo && (
+              <Image source={{ uri: matchDetails.AwayTeamLogo }} style={styles.teamLogo} />
+            )}
+            <Text style={styles.teamName}>
+              {teamShortForms[matchDetails.AwayTeamName] || matchDetails.AwayTeamName}
+            </Text>
+          </View>
+        </View>
 
-      <Text style={styles.details}>🧑‍⚖ Umpires: {matchData.GroundUmpire1 ?? "N/A"}, {matchData.GroundUmpire2 ?? "N/A"}</Text>
-    </ScrollView>
+        {/* Navigation Tabs */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity onPress={() => setActiveTab('Summary')}>
+            <Text style={[styles.tab, activeTab === 'Summary' && styles.activeTab]}>
+              Summary
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setActiveTab('Scorecard')}>
+            <Text style={[styles.tab, activeTab === 'Scorecard' && styles.activeTab]}>
+              Scorecard
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setActiveTab('Ratings')}>
+            <Text style={[styles.tab, activeTab === 'Ratings' && styles.activeTab]}>
+              Ratings
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeTab === 'Summary' ? (
+          <View>
+            {/* Man of the Match Section */}
+            {matchDetails.MOM && (
+              <View style={styles.momSection}>
+                {matchDetails.MOMImage && (
+                  <Image source={{ uri: matchDetails.MOMImage }} style={styles.momImage} />
+                )}
+                <View style={styles.momInfo}>
+                  <Text style={styles.momTitle}>MAN OF THE MATCH</Text>
+                  <Text style={styles.momName}>{matchDetails.MOM}</Text>
+                  <Text style={styles.momStats}>
+                    Runs: {matchDetails.MOMRuns} | Wickets: {matchDetails.MOMWicket}/{matchDetails.MOMRC}
+                  </Text>
+                  {matchDetails.MOMStrikeRate && (
+                    <Text style={[styles.momAdditional, { color: getStrikeRateColor(matchDetails.MOMStrikeRate) }]}>
+                      Strike Rate: {matchDetails.MOMStrikeRate}
+                    </Text>
+                  )}
+                  {matchDetails.MOMEconomy && (
+                    <Text style={[styles.momAdditional, { color: getEconomyColor(matchDetails.MOMEconomy) }]}>
+                      Economy: {matchDetails.MOMEconomy}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* Toss Details */}
+            <Text style={styles.tossText}>
+              Toss: {replaceTeamNames(matchDetails.TossDetails)}
+            </Text>
+
+            {/* Team Scores */}
+            <View style={styles.teamScoresContainer}>
+              <View style={styles.teamContainer}>
+                {matchDetails.HomeTeamLogo && (
+                  <Image source={{ uri: matchDetails.HomeTeamLogo }} style={styles.smallLogo} />
+                )}
+                <Text style={styles.teamScore}>{matchDetails['1Summary']}</Text>
+                <Text style={styles.teamName}>
+                  {teamShortForms[matchDetails.HomeTeamName] || matchDetails.HomeTeamName}
+                </Text>
+              </View>
+              <View style={styles.teamContainer}>
+                {matchDetails.AwayTeamLogo && (
+                  <Image source={{ uri: matchDetails.AwayTeamLogo }} style={styles.smallLogo} />
+                )}
+                <Text style={styles.teamScore}>{matchDetails['2Summary']}</Text>
+                <Text style={styles.teamName}>
+                  {teamShortForms[matchDetails.AwayTeamName] || matchDetails.AwayTeamName}
+                </Text>
+              </View>
+            </View>
+
+            {/* Match Result */}
+            <View style={styles.resultContainer}>
+              <Text style={styles.resultText} numberOfLines={1} ellipsizeMode="tail">
+                {replaceTeamNames(matchDetails.Comments || matchDetails.Commentss)}
+              </Text>
+            </View>
+          </View>
+        ) : activeTab === 'Scorecard' ? (
+          <ScorecardTab matchId={matchId} season={season} />
+        ) : (
+          // Ratings Tab
+          <RatingTab 
+            matchId={matchId}
+            winningTeam={winningTeam}
+          />
+        )}
+      </ScrollView>
+
+      {/* Stadium Name at the Bottom */}
+      <View style={styles.stadiumContainer}>
+        <Text style={styles.stadiumText}>
+          {teamShortForms[matchDetails.GroundName] || matchDetails.GroundName}
+        </Text>
+      </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { 
-    flexGrow: 1, 
-    padding: 16, 
-    backgroundColor: "#0F172A", 
-    alignItems: "center" 
+  mainContainer: {
+    flex: 1,
+    backgroundColor: '#121212',
   },
-  headerContainer: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    justifyContent: "center", 
-    marginBottom: 24,
-    backgroundColor: "#1E293B",
-    padding: 20,
-    borderRadius: 20,
-    width: '100%',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8
+  contentContainer: {
+    paddingTop: 40,
+    paddingBottom: 80,
   },
-  teamLogo: { 
-    width: 90, 
-    height: 90, 
-    resizeMode: "contain", 
-    marginHorizontal: 20,
+  teamLogosContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginVertical: 10,
+  },
+  teamContainer: {
+    alignItems: 'center',
+  },
+  teamLogo: {
+    width: 90,
+    height: 90,
     borderRadius: 45,
-    borderWidth: 3,
-    borderColor: "#FFFFFF30"
   },
-  vsText: { 
-    fontSize: 20, 
-    fontWeight: "800", 
-    color: "#fff",
-    backgroundColor: "#DC2626",
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 20
+  vsText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
   },
-  matchTitle: { 
-    fontSize: 26, 
-    fontWeight: "800", 
-    textAlign: "center", 
-    marginVertical: 16,
-    color: "#FFFFFF",
-    letterSpacing: 0.5
+  teamName: {
+    fontSize: 18,
+    color: 'white',
+    marginTop: 4,
   },
-  details: { 
-    fontSize: 16, 
-    color: "#CBD5E1", 
-    marginVertical: 8,
-    backgroundColor: "#1E293B",
-    padding: 16,
-    borderRadius: 12,
-    width: '100%',
+  tabContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    backgroundColor: '#1e1e1e',
+    borderRadius: 16,
+    margin: 16,
+  },
+  tab: {
+    fontSize: 18,
+    color: '#AAAAAA',
+  },
+  activeTab: {
+    color: 'white',
+    fontWeight: 'bold',
+    borderBottomWidth: 2,
+    borderBottomColor: '#FFD700',
+  },
+  momSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12
-  },
-  toss: { 
-    fontSize: 16, 
-    fontWeight: "700", 
-    color: "#F59E0B", 
-    backgroundColor: "#F59E0B20",
     padding: 16,
-    borderRadius: 12,
-    width: '100%'
   },
-  result: { 
-    fontSize: 16, 
-    fontWeight: "700", 
-    color: "#10B981", 
-    backgroundColor: "#10B98120",
-    padding: 16,
-    borderRadius: 12,
-    width: '100%'
-  },
-  scoreContainer: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    width: "100%", 
-    marginVertical: 16,
-    gap: 12
-  },
-  score: { 
-    fontSize: 16, 
-    fontWeight: "600", 
-    color: "#fff",
-    backgroundColor: "#334155",
-    padding: 16,
-    borderRadius: 12,
-    flex: 1,
-    textAlign: 'center'
-  },
-  momContainer: { 
-    alignItems: "center", 
-    backgroundColor: "#1E293B", 
-    padding: 24, 
-    borderRadius: 20, 
-    marginVertical: 16, 
-    width: '100%',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8
-  },
-  momTitle: { 
-    fontSize: 20, 
-    fontWeight: "800", 
-    marginBottom: 12,
-    color: "#FFFFFF"
-  },
-  momImage: { 
-    width: 100, 
-    height: 100, 
-    borderRadius: 50, 
-    marginBottom: 12,
+  momImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    marginRight: 16,
     borderWidth: 3,
-    borderColor: "#FFFFFF30"
+    borderColor: '#FFD700',
   },
-  momName: { 
-    fontSize: 18, 
-    fontWeight: "700",
-    color: "#FFFFFF",
-    marginBottom: 4
+  momInfo: {
+    flex: 1,
   },
-  momStats: { 
-    fontSize: 14, 
-    color: "#94A3B8",
-    letterSpacing: 0.4
+  momTitle: {
+    fontSize: 18,
+    color: '#FFD700',
+    fontWeight: 'bold',
   },
-  loadingContainer: { 
-    flex: 1, 
-    justifyContent: "center", 
-    alignItems: "center",
-    backgroundColor: "#0F172A"
+  momName: {
+    fontSize: 18,
+    color: 'white',
   },
-  errorText: { 
-    fontSize: 16, 
-    color: "#DC2626", 
-    fontWeight: "700" 
+  momStats: {
+    fontSize: 16,
+    color: '#CCCCCC',
+  },
+  momAdditional: {
+    fontSize: 16,
+    marginTop: 4,
+  },
+  tossText: {
+    fontSize: 18,
+    color: '#00BFFF',
+    textAlign: 'center',
+    marginVertical: 12,
+    fontStyle: 'italic',
+    fontWeight: '600',
+  },
+  teamScoresContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginHorizontal: 16,
+  },
+  smallLogo: {
+    width: 60,
+    height: 60,
+  },
+  teamScore: {
+    fontSize: 18,
+    color: '#FFD700',
+    marginTop: 4,
+  },
+  resultContainer: {
+    alignItems: 'center',
+    marginVertical: 16,
+  },
+  resultText: {
+    fontSize: 20,
+    color: '#FF6347',
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  stadiumContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#1e1e1e',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  stadiumText: {
+    fontSize: 20,
+    color: '#AAAAAA',
   },
 });
 

@@ -2,47 +2,16 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from "react-native";
 import { Picker } from '@react-native-picker/picker';
 
-const StatsScreen = () => {
+const StatsScreen2025 = () => {
   const [activeTab, setActiveTab] = useState("batting");
   const [topBatters, setTopBatters] = useState([]);
   const [topBowlers, setTopBowlers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSeason, setSelectedSeason] = useState("2024");
+  const [selectedSeason, setSelectedSeason] = useState("2025");
 
   useEffect(() => {
-    if (selectedSeason === "2024") {
-      fetchIPL2024Stats();
-    } else {
-      fetchIPL2025Stats();
-    }
-  }, [selectedSeason]);
-
-  const fetchIPL2024Stats = async () => {
-    try {
-      // Fetch batting stats
-      const battingResponse = await fetch('https://ipl-stats-sports-mechanic.s3.ap-south-1.amazonaws.com/ipl/feeds/stats/148-toprunsscorers.js?callback=ontoprunsscorers&_=1743333613104');
-      const battingText = await battingResponse.text();
-      const battingJsonStr = battingText.replace('ontoprunsscorers(', '').replace(');', '');
-      const battingData = JSON.parse(battingJsonStr);
-
-      // Fetch bowling stats
-      const bowlingResponse = await fetch('https://ipl-stats-sports-mechanic.s3.ap-south-1.amazonaws.com/ipl/feeds/stats/148-mostwickets.js?callback=onmostwickets&_=1743333746634');
-      const bowlingText = await bowlingResponse.text();
-      const bowlingJsonStr = bowlingText.replace('onmostwickets(', '').replace(');', '');
-      const bowlingData = JSON.parse(bowlingJsonStr);
-
-      if (battingData && battingData.toprunsscorers) {
-        setTopBatters(battingData.toprunsscorers);
-      }
-      if (bowlingData && bowlingData.mostwickets) {
-        setTopBowlers(bowlingData.mostwickets);
-      }
-      setLoading(false);
-    } catch (error) {
-      console.error("Error fetching IPL 2024 stats:", error);
-      setLoading(false);
-    }
-  };
+    fetchIPL2025Stats();
+  }, []);
 
   const fetchIPL2025Stats = async () => {
     try {
@@ -83,7 +52,7 @@ const StatsScreen = () => {
 
   const renderBattingStats = () => {
     if (loading) return <Text style={styles.loadingText}>Loading...</Text>;
-
+    
     return (
       <ScrollView>
         <View style={styles.statsContainer}>
@@ -164,7 +133,7 @@ const StatsScreen = () => {
                 />
                 <Text style={styles.playerName}>{batter.StrikerName}</Text>
                 <Text style={styles.statValue}>{batter.FiftyPlusRuns}</Text>
-            </View>
+              </View>
             ))}
 
           <Text style={styles.sectionTitle}>Most Hundreds</Text>
@@ -182,7 +151,7 @@ const StatsScreen = () => {
                 <Text style={styles.statValue}>{batter.Centuries}</Text>
               </View>
             ))}
-      </View>
+        </View>
       </ScrollView>
     );
   };
@@ -288,11 +257,11 @@ const StatsScreen = () => {
           onPress={() => setActiveTab("bowling")}
         >
           <Text style={[styles.tabText, activeTab === "bowling" && styles.activeTabText]}>Bowling</Text>
-          </TouchableOpacity>
+        </TouchableOpacity>
       </View>
 
       {activeTab === "batting" ? renderBattingStats() : renderBowlingStats()}
-        </View>
+    </View>
   );
 };
 
@@ -388,4 +357,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default StatsScreen;
+export default StatsScreen2025; 
